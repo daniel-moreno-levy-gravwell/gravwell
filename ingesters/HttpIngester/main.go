@@ -25,6 +25,7 @@ import (
 	_ "time/tzdata"
 
 	"github.com/gravwell/gravwell/v3/debug"
+	"github.com/gravwell/gravwell/v3/ingest"
 	"github.com/gravwell/gravwell/v3/ingest/log"
 	"github.com/gravwell/gravwell/v3/ingesters/base"
 	"github.com/gravwell/gravwell/v3/ingesters/utils"
@@ -110,71 +111,8 @@ func main() {
 	if hcurl, ok := cfg.HealthCheck(); ok {
 		hnd.healthCheckURL = path.Clean(hcurl)
 	}
-	for _, v := range cfg.Listener {
-		hcfg := routeHandler{
-			handler:       handleSingle,
-			paramAttacher: getAttacher(v.Attach_URL_Parameter),
-		}
-		if v.Multiline {
-			hcfg.handler = handleMulti
-		}
-		if hcfg.tag, err = igst.GetTag(v.Tag_Name); err != nil {
-			lg.Fatal("failed to pull tag", log.KV("tag", v.Tag_Name), log.KVErr(err))
-		}
-		if v.Ignore_Timestamps {
-			hcfg.ignoreTs = true
-		} else {
-			var window timegrinder.TimestampWindow
-			window, err = cfg.GlobalTimestampWindow()
-			if err != nil {
-				lg.Fatal("Failed to get global timestamp window", log.KVErr(err))
-			}
-			tcfg := timegrinder.Config{
-				EnableLeftMostSeed: true,
-				TSWindow:           window,
-			}
-			if hcfg.tg, err = timegrinder.NewTimeGrinder(tcfg); err != nil {
-				lg.Fatal("failed to generate new timegrinder", log.KVErr(err))
-			} else if err = cfg.TimeFormat.LoadFormats(hcfg.tg); err != nil {
-				lg.Fatal("failed to load custom time formats", log.KVErr(err))
-			}
-			if v.Timestamp_Format_Override != `` {
-				if err = hcfg.tg.SetFormatOverride(v.Timestamp_Format_Override); err != nil {
-					lg.Fatal("Failed to set override timestamp", log.KVErr(err))
-				}
-			}
-			if v.Assume_Local_Timezone {
-				hcfg.tg.SetLocalTime()
-			}
-			if v.Timezone_Override != `` {
-				if err = hcfg.tg.SetTimezone(v.Timezone_Override); err != nil {
-					lg.Fatal("failed to override timezone", log.KVErr(err))
-				}
-			}
-		}
-		if v.Method == `` {
-			v.Method = defaultMethod
-		}
-
-		hcfg.pproc, err = cfg.Preprocessor.ProcessorSet(igst, v.Preprocessor)
-		if err != nil {
-			lg.Fatal("preprocessor construction error", log.KVErr(err))
-		}
-		//check if authentication is enabled for this URL
-		if pth, ah, err := v.NewAuthHandler(lg); err != nil {
-			lg.Fatal("failed to get a new authentication handler", log.KVErr(err))
-		} else if hnd != nil {
-			if pth != `` {
-				if err = hnd.addAuthHandler(http.MethodPost, pth, ah); err != nil {
-					lg.Fatal("failed to add auth handler", log.KV("url", pth), log.KVErr(err))
-				}
-			}
-			hcfg.auth = ah
-		}
-		if err = hnd.addHandler(v.Method, v.URL, hcfg); err != nil {
-			lg.Fatal("failed to add handler", log.KV("url", v.URL), log.KVErr(err))
-		}
-		debugout("URL %s handling %s\n", v.URL, v.Tag_Name)
+	if err = includeStdListeners(hnd, igst, cfg, lg); err != nil {
+		lg.Fatal("failed ot include std listeners", log.KVErr(err))
 	}
 
 	if err = includeHecListeners(hnd, igst, cfg, lg); err != nil {
@@ -350,4 +288,74 @@ func (is *instrumentListener) Accept() (net.Conn, error) {
 		is.s.Add(1)
 	}
 	return c, err
+}
+
+func includeStdListeners(hnd *handler, igst *ingest.IngestMuxer, cfg *cfgType, lgr *log.Logger) (err error) {
+	for _, v := range cfg.Listener {
+		hcfg := routeHandler{
+			handler:       handleSingle,
+			paramAttacher: getAttacher(v.Attach_URL_Parameter),
+		}
+		if v.Multiline {
+			hcfg.handler = handleMulti
+		}
+		if hcfg.tag, err = igst.GetTag(v.Tag_Name); err != nil {
+			lg.Fatal("failed to pull tag", log.KV("tag", v.Tag_Name), log.KVErr(err))
+		}
+		if v.Ignore_Timestamps {
+			hcfg.ignoreTs = true
+		} else {
+			var window timegrinder.TimestampWindow
+			window, err = cfg.GlobalTimestampWindow()
+			if err != nil {
+				lg.Fatal("Failed to get global timestamp window", log.KVErr(err))
+			}
+			tcfg := timegrinder.Config{
+				EnableLeftMostSeed: true,
+				TSWindow:           window,
+			}
+			if hcfg.tg, err = timegrinder.NewTimeGrinder(tcfg); err != nil {
+				lg.Fatal("failed to generate new timegrinder", log.KVErr(err))
+			} else if err = cfg.TimeFormat.LoadFormats(hcfg.tg); err != nil {
+				lg.Fatal("failed to load custom time formats", log.KVErr(err))
+			}
+			if v.Timestamp_Format_Override != `` {
+				if err = hcfg.tg.SetFormatOverride(v.Timestamp_Format_Override); err != nil {
+					lg.Fatal("Failed to set override timestamp", log.KVErr(err))
+				}
+			}
+			if v.Assume_Local_Timezone {
+				hcfg.tg.SetLocalTime()
+			}
+			if v.Timezone_Override != `` {
+				if err = hcfg.tg.SetTimezone(v.Timezone_Override); err != nil {
+					lg.Fatal("failed to override timezone", log.KVErr(err))
+				}
+			}
+		}
+		if v.Method == `` {
+			v.Method = defaultMethod
+		}
+
+		hcfg.pproc, err = cfg.Preprocessor.ProcessorSet(igst, v.Preprocessor)
+		if err != nil {
+			lg.Fatal("preprocessor construction error", log.KVErr(err))
+		}
+		//check if authentication is enabled for this URL
+		if pth, ah, err := v.NewAuthHandler(lg); err != nil {
+			lg.Fatal("failed to get a new authentication handler", log.KVErr(err))
+		} else if hnd != nil {
+			if pth != `` {
+				if err = hnd.addAuthHandler(http.MethodPost, pth, ah); err != nil {
+					lg.Fatal("failed to add auth handler", log.KV("url", pth), log.KVErr(err))
+				}
+			}
+			hcfg.auth = ah
+		}
+		if err = hnd.addHandler(v.Method, v.URL, hcfg); err != nil {
+			lg.Fatal("failed to add handler", log.KV("url", v.URL), log.KVErr(err))
+		}
+		debugout("URL %s handling %s\n", v.URL, v.Tag_Name)
+	}
+	return
 }
