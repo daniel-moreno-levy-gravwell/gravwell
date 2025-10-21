@@ -121,6 +121,12 @@ func (c *Client) GetApiVersion() (types.ApiInfo, error) {
 	return version.API, err
 }
 
+// GetVersion returns the REST version struct from the webserver.
+func (c *Client) GetVersion() (version types.VersionInfo, err error) {
+	err = c.getStaticURL(API_VERSION_URL, &version)
+	return
+}
+
 func (c *Client) getLogLevelInfo() (types.LoggingLevels, error) {
 	ll := types.LoggingLevels{}
 	if err := c.methodStaticURL(http.MethodGet, LOGGING_PATH_URL, &ll); err != nil {
@@ -306,6 +312,13 @@ func (c *Client) MailConfig() (mc types.UserMailConfig, err error) {
 // The return value is a map of indexer name strings to IndexerWellData objects.
 func (c *Client) WellData() (mp map[string]types.IndexerWellData, err error) {
 	err = c.getStaticURL(wellDataUrl(), &mp)
+	return
+}
+
+// SearchQueue returns information about the search queue. If rate limiting is
+// disabled, all values will be zero.
+func (c *Client) SearchQueue() (s types.SearchQueue, err error) {
+	err = c.getStaticURL(searchQueueUrl(), &s)
 	return
 }
 

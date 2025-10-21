@@ -174,6 +174,9 @@ type LaunchResponse struct {
 	RenderModule string     `json:",omitempty"`
 	RenderCmd    string     `json:",omitempty"`
 	Info         SearchInfo `json:",omitempty"`
+
+	// Errors, warnings, etc.
+	Messages []Message
 }
 
 // StartSearchRequest represents a search that is sent to the search controller
@@ -341,7 +344,8 @@ type SearchCtrlStatus struct {
 	NoHistory       bool
 	Import          ImportInfo
 	LaunchInfo      SearchLaunchInfo
-	Error           string `json:",omitempty"`
+	Error           string          `json:",omitempty"`
+	Metadata        json.RawMessage `json:",omitempty"` //additional metadata associated with a search
 }
 
 type SearchState struct {
@@ -350,6 +354,7 @@ type SearchState struct {
 	Saved        bool         `json:"saved"`
 	Streaming    bool         `json:"streaming"`
 	Status       SearchStatus `json:"status"`
+	Progress     float64      `json:"progress"`
 }
 
 func (ss SearchState) String() (r string) {
@@ -405,6 +410,17 @@ func CheckMacroName(name string) error {
 		}
 	}
 	return nil
+}
+
+func (l LaunchResponse) MarshalJSON() ([]byte, error) {
+	type alias LaunchResponse
+	return json.Marshal(&struct {
+		alias
+		Messages emptyMessages
+	}{
+		alias:    alias(l),
+		Messages: emptyMessages(l.Messages),
+	})
 }
 
 func (si SearchInfo) MarshalJSON() ([]byte, error) {

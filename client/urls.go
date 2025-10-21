@@ -38,6 +38,7 @@ const (
 	IDX_URL                          = `/api/stats/idxStats`
 	INGESTER_URL                     = `/api/stats/igstStats`
 	WELLS_URL                        = `/api/stats/wellStats`
+	QUEUE_URL                        = `/api/stats/search/queue`
 	STORAGE_URL                      = `/api/stats/storage/indexers`
 	STORAGE_INDEXER_URL              = `/api/stats/storage/indexer/%s/wells`
 	CALENDAR_URL                     = `/api/stats/storage/calendar`
@@ -86,8 +87,8 @@ const (
 	SEARCH_CTRL_DOWNLOAD_URL         = `/api/searchctrl/%s/download/%s`
 	SEARCH_CTRL_PING_URL             = `/api/searchctrl/%s/ping`
 	SEARCH_CTRL_DETACH_URL           = `/api/searchctrl/%s/detach`
+	SEARCH_CTRL_MODULES              = `/api/searchctrl/%s/modules`
 	SEARCH_CTRL_STATS_URL            = `/api/searchctrl/%s/stats`
-	SEARCH_CTRL_STATS_OVERVIEW_URL   = `/api/searchctrl/%s/stats/overview`
 	SEARCH_CTRL_STATS_METADATA_URL   = `/api/searchctrl/%s/stats/metadata`
 	SEARCH_CTRL_EXPLORE_URL          = `/api/searchctrl/%s/renderer/%s/explore`
 	SEARCH_CTRL_ENTRIES_URL          = `/api/searchctrl/%s/renderer/%s`
@@ -497,6 +498,10 @@ func wellDataUrl() string {
 	return WELLS_URL
 }
 
+func searchQueueUrl() string {
+	return QUEUE_URL
+}
+
 func userMacrosUrl(id int32) string {
 	return fmt.Sprintf(USERS_MACROS_URL, id)
 }
@@ -667,12 +672,12 @@ func searchStatsMetadataUrl(id string) string {
 	return fmt.Sprintf(SEARCH_CTRL_STATS_METADATA_URL, id)
 }
 
-func searchStatsOverviewUrl(id string) string {
-	return fmt.Sprintf(SEARCH_CTRL_STATS_OVERVIEW_URL, id)
-}
-
 func searchStatsUrl(id string) string {
 	return fmt.Sprintf(SEARCH_CTRL_STATS_URL, id)
+}
+
+func searchStatsModules(id string) string {
+	return fmt.Sprintf(SEARCH_CTRL_MODULES, id)
 }
 
 func searchExploreUrl(id, rndr string) string {
