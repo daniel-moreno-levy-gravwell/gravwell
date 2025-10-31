@@ -127,12 +127,9 @@ func handleAFH(h *handler, cfg routeHandler, w http.ResponseWriter, r *http.Requ
 		sendAFHOk(w, kr.RequestId)
 
 		if cfg.debugPosts {
-			kvs := []rfc5424.SDParam{
-				log.KV("host", ip),
-				log.KV("method", r.Method),
-				log.KV("url", r.URL.RequestURI()),
-				log.KV("bytes", bodyReadLimit-lr.N),
-				log.KV("entries", len(batch)),
+			kvs := []rfc5424.SDParam{log.KV("host", ip),
+				log.KV("method", r.Method), log.KV("url", r.URL.RequestURI()),
+				log.KV("bytes", bodyReadLimit-lr.N), log.KV("entries", len(batch)),
 				log.KV("ms", time.Since(now).Milliseconds()),
 			}
 			h.igst.Info("Amazon Firehose Event", kvs...)

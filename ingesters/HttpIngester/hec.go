@@ -284,7 +284,6 @@ loop:
 
 	hh.writeResponse(w, resp)
 	if cfg.debugPosts {
-		// NOTE  Consider putting this somewhere common, but let's be stupid first
 		//Log how many bytes and entries were on this config
 		kvs := []rfc5424.SDParam{log.KV("host", ip),
 			log.KV("method", r.Method), log.KV("url", r.URL.RequestURI()),

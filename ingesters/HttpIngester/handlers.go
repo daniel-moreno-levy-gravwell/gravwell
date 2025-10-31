@@ -429,12 +429,9 @@ func handleMulti(h *handler, cfg routeHandler, w http.ResponseWriter, r *http.Re
 		h.lgr.Warn("failed to handle multiline upload", log.KVErr(err))
 		w.WriteHeader(http.StatusBadRequest)
 	} else if cfg.debugPosts {
-		kvs := []rfc5424.SDParam{
-			log.KV("host", ip),
-			log.KV("method", r.Method),
-			log.KV("url", r.URL.RequestURI()),
-			log.KV("bytes", byteCount),
-			log.KV("entries", entriesCount),
+		kvs := []rfc5424.SDParam{log.KV("host", ip),
+			log.KV("method", r.Method), log.KV("url", r.URL.RequestURI()),
+			log.KV("bytes", byteCount), log.KV("entries", entriesCount),
 			log.KV("ms", time.Since(now).Milliseconds()),
 		}
 		h.igst.Info("HTTP multi-request", kvs...)
@@ -467,12 +464,9 @@ func handleSingle(h *handler, cfg routeHandler, w http.ResponseWriter, r *http.R
 		h.lgr.Error("failed to handle entry", log.KV("address", ip), log.KVErr(err))
 		w.WriteHeader(http.StatusInternalServerError)
 	} else if cfg.debugPosts {
-		kvs := []rfc5424.SDParam{
-			log.KV("host", ip),
-			log.KV("method", r.Method),
-			log.KV("url", r.URL.RequestURI()),
-			log.KV("bytes", bodyReadLimit-lr.N),
-			log.KV("entries", 1),
+		kvs := []rfc5424.SDParam{log.KV("host", ip),
+			log.KV("method", r.Method), log.KV("url", r.URL.RequestURI()),
+			log.KV("bytes", bodyReadLimit-lr.N), log.KV("entries", 1),
 			log.KV("ms", time.Since(now).Milliseconds()),
 		}
 		h.igst.Info("HTTP request", kvs...)
