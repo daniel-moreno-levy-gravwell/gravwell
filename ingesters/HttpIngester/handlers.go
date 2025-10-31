@@ -416,7 +416,7 @@ func handleMulti(h *handler, cfg routeHandler, w http.ResponseWriter, r *http.Re
 		if bts = bytes.TrimSpace(bts); len(bts) == 0 {
 			continue
 		}
-		byteCount += int64(byteCount)
+		byteCount += int64(len(bts))
 		// we have to do a bytes.Clone on the output because the bufio.Scanner does internal buffer reuse
 		if err := h.handleEntry(cfg, bytes.Clone(bts), ip, cfg.tag); err != nil {
 			h.lgr.Error("failed to handle entry", log.KV("address", ip), log.KVErr(err))
