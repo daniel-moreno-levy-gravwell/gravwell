@@ -171,7 +171,8 @@ func sendAFHOk(w http.ResponseWriter, id string) {
 func includeAFHListeners(hnd *handler, igst *ingest.IngestMuxer, cfg *cfgType, lgr *log.Logger) (err error) {
 	for _, v := range cfg.AFHListener {
 		hcfg := routeHandler{
-			handler: handleAFH,
+			handler:    handleAFH,
+			debugPosts: v.Debug_Posts,
 		}
 		if hcfg.tag, err = igst.NegotiateTag(v.Tag_Name); err != nil {
 			return fmt.Errorf("failed to pull tag %s %w", v.Tag_Name, err)
@@ -192,9 +193,6 @@ func includeAFHListeners(hnd *handler, igst *ingest.IngestMuxer, cfg *cfgType, l
 		}
 		if hnd.addHandler(http.MethodPost, v.URL, hcfg); err != nil {
 			return fmt.Errorf("failed to add handler for %q %w", v.URL, err)
-		}
-		if v.Debug_Posts {
-			hcfg.debugPosts = v.Debug_Posts
 		}
 		debugout("AFH Handler URL %s handling %s\n", v.URL, v.Tag_Name)
 	}
