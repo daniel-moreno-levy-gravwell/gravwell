@@ -300,6 +300,7 @@ func includeStdListeners(hnd *handler, igst *ingest.IngestMuxer, cfg *cfgType) (
 		hcfg := routeHandler{
 			handler:       handleSingle,
 			paramAttacher: getAttacher(v.Attach_URL_Parameter),
+			debugPosts:    v.Debug_Posts,
 		}
 		if v.Multiline {
 			hcfg.handler = handleMulti
@@ -340,9 +341,6 @@ func includeStdListeners(hnd *handler, igst *ingest.IngestMuxer, cfg *cfgType) (
 		}
 		if v.Method == `` {
 			v.Method = defaultMethod
-		}
-		if v.Debug_Posts {
-			hcfg.debugPosts = true
 		}
 
 		hcfg.pproc, err = cfg.Preprocessor.ProcessorSet(igst, v.Preprocessor)
