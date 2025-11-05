@@ -60,6 +60,15 @@ type ChanCacher struct {
 	fileLock *flock.Flock
 }
 
+// CacheDirPerm permission on cache directories
+const CacheDirPerm = 0750
+
+// CacheFilePerm permissions on cache files
+const CacheFilePerm = 0640
+
+// CacheFlagPermissions permissions on cache files when opening
+const CacheFlagPermissions = os.O_CREATE|os.O_RDWR
+
 // NewChanCacher creates a new ChanCacher with maximum depth, and optional backing file.
 // If maxDepth == 0, the ChanCacher will be unbuffered. If maxDepth == -1, the
 // ChanCacher depth will be set to MaxDepth. To enable a backing store,
@@ -108,7 +117,7 @@ func NewChanCacher(maxDepth int, cachePath string, maxSize int) (*ChanCacher, er
 	if c.cache {
 		var err error
 
-		err = os.MkdirAll(c.cachePath, 0750)
+		err = os.MkdirAll(c.cachePath, CacheDirPerm)
 		if err != nil {
 			return nil, err
 		}
@@ -514,7 +523,7 @@ func merge(a, b string) error {
 // cache is already present in `cPath` and cannot be opened.
 // Returns file handler to the cache file.
 func openCache(cPath, quarantineDir string) (*os.File, error) {
-	r, err := os.OpenFile(cPath, os.O_CREATE|os.O_RDWR, 0640)
+	r, err := os.OpenFile(cPath, CacheFlagPermissions, CacheFilePerm)
 	if err == nil {
 		return r, nil
 	}
@@ -533,7 +542,7 @@ func openCache(cPath, quarantineDir string) (*os.File, error) {
 // File moved to quarantineDir will follow naming convention:
 // `{quarantineDir}/{cacheBaseName}.{1,2,3...}`
 func quarantineCache(quarantineDir, cPath string) (*os.File, error) {
-	err := os.MkdirAll(quarantineDir, 0750)
+	err := os.MkdirAll(quarantineDir, CacheDirPerm)
 	if err != nil {
 		return nil, err
 	}
@@ -552,7 +561,7 @@ func quarantineCache(quarantineDir, cPath string) (*os.File, error) {
 		return nil, err
 	}
 
-	return os.OpenFile(cPath, os.O_CREATE|os.O_RDWR, 0640)
+	return os.OpenFile(cPath, CacheFlagPermissions, CacheFilePerm)
 }
 
 func getQuarantineCacheName(quarantinePathBase string, matches []string) string {
