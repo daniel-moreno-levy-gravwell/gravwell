@@ -885,7 +885,6 @@ func Test_quarantineCache(t *testing.T) {
 func Test_getQuarantineCacheName(t *testing.T) {
 	baseName := filepath.Join(os.TempDir(), "chancachertest", "quarantine", "cachetest")
 
-	// No previews quarantine files case
 	tests := []struct {
 		caseName    string
 		matches     []string
