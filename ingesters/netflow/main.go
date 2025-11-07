@@ -25,7 +25,6 @@ import (
 	"github.com/gravwell/gravwell/v3/ingest/log"
 	"github.com/gravwell/gravwell/v3/ingesters/base"
 	"github.com/gravwell/gravwell/v3/ingesters/netflow/internal/connections"
-	"github.com/gravwell/gravwell/v3/ingesters/netflow/internal/debugout"
 	"github.com/gravwell/gravwell/v3/ingesters/netflow/internal/handlers"
 	"github.com/gravwell/gravwell/v3/ingesters/utils"
 )
@@ -62,9 +61,7 @@ func main() {
 		return
 	}
 	if ib.Verbose {
-		debugout.DebugOut = func(format string, args ...interface{}) {
-			fmt.Printf(format, args...)
-		}
+		debug.DebugOut = debug.Printf
 	}
 
 	lg := ib.Logger
@@ -81,7 +78,7 @@ func main() {
 	defer igst.Close()
 	ib.AnnounceStartup()
 
-	debugout.DebugOut("Started ingester muxer\n")
+	debug.DebugOut("Started ingester muxer\n")
 
 	wg := sync.WaitGroup{}
 	ch := make(chan *entry.Entry, 2048)
@@ -149,17 +146,17 @@ func main() {
 		}
 		wg.Add(1)
 	}
-	debugout.DebugOut("Started %d handlers\n", len(cfg.Collector))
+	debug.DebugOut("Started %d handlers\n", len(cfg.Collector))
 	//fire off our relay
 	doneChan := make(chan bool)
 	go relay(ch, doneChan, src, igst)
 
-	debugout.DebugOut("Running\n")
+	debug.DebugOut("Running\n")
 
 	//listen for signals so we can close gracefully
 	utils.WaitForQuit()
 	ib.AnnounceShutdown()
-	debugout.DebugOut("Closing %d connections\n", connManager.Count())
+	debug.DebugOut("Closing %d connections\n", connManager.Count())
 	connManager.CloseAll()
 
 	//wait for everyone to exit with a timeout

@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	nowID  = `$NOW`
-	uuidID = `$UUID`
-	hostID = `$HOSTNAME`
+	nowId  = `$NOW`
+	uuidId = `$UUID`
+	hostId = `$HOSTNAME`
 
 	envUpdateInterval = time.Minute * 5 //update environment variables every 10minutes
 )
@@ -115,7 +115,7 @@ func NewAttacher(ac AttachConfig, id uuid.UUID) (a *Attacher, err error) {
 	for i, at := range ats {
 		a.evs[i].Name = at.key
 		switch at.value {
-		case hostID:
+		case hostId:
 			// we are not going to dynamically resolve the hostname every time
 			// do it once and treat it as a constant
 			var hostname string
@@ -123,9 +123,9 @@ func NewAttacher(ac AttachConfig, id uuid.UUID) (a *Attacher, err error) {
 				return nil, fmt.Errorf("Attach item %s(%d) failed to get hostname: %v", at.key, i, err)
 			}
 			a.evs[i].Value = entry.StringEnumData(hostname)
-		case uuidID:
+		case uuidId:
 			a.evs[i].Value = entry.StringEnumData(id.String())
-		case nowID:
+		case nowId:
 			a.haveDynamic = true
 			nts := newTimeDynamic(&a.evs[i].Value)
 			a.dynamics = append(a.dynamics, nts)
