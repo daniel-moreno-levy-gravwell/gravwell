@@ -24,6 +24,9 @@ import (
 	"github.com/gravwell/gravwell/v3/ingest/entry"
 	"github.com/gravwell/gravwell/v3/ingest/log"
 	"github.com/gravwell/gravwell/v3/ingesters/base"
+	"github.com/gravwell/gravwell/v3/ingesters/netflow/internal/connections"
+	"github.com/gravwell/gravwell/v3/ingesters/netflow/internal/debugout"
+	"github.com/gravwell/gravwell/v3/ingesters/netflow/internal/handlers"
 	"github.com/gravwell/gravwell/v3/ingesters/utils"
 )
 
@@ -36,9 +39,7 @@ const (
 )
 
 var (
-	debugOn bool
-	lg      *log.Logger
-
+	lg              *log.Logger
 	exitCtx, exitFn = context.WithCancel(context.Background())
 )
 
@@ -60,8 +61,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to assign configuration %v %v\n", err, cfg == nil)
 		return
 	}
-	debugOn = ib.Verbose
-	lg = ib.Logger
+	if ib.Verbose {
+		debugout.DebugOut = func(format string, args ...interface{}) {
+			fmt.Printf(format, args...)
+		}
+	}
+
+	lg := ib.Logger
 	id, ok := cfg.IngesterUUID()
 	if !ok {
 		ib.Logger.FatalCode(0, "could not read ingester UUID")
@@ -75,15 +81,17 @@ func main() {
 	defer igst.Close()
 	ib.AnnounceStartup()
 
-	debugout("Started ingester muxer\n")
+	debugout.DebugOut("Started ingester muxer\n")
 
-	connClosers = make(map[int]closer, 1)
 	wg := sync.WaitGroup{}
 	ch := make(chan *entry.Entry, 2048)
-	bc := bindConfig{
-		ch:   ch,
-		wg:   &wg,
-		igst: igst,
+	connManager := connections.NewManager()
+	bc := handlers.BindConfig{
+		Ch:          ch,
+		Wg:          &wg,
+		Igst:        igst,
+		ConnManager: connManager,
+		Log:         lg,
 	}
 
 	var src net.IP
@@ -106,25 +114,28 @@ func main() {
 		if err != nil {
 			lg.FatalCode(0, "invalid flow type", log.KV("flowtype", v.Flow_Type), log.KV("collector", k), log.KVErr(err))
 		}
-		bc.tag = tag
-		bc.ignoreTS = v.Ignore_Timestamps
-		bc.localTZ = v.Assume_Local_Timezone
-		bc.sessionDumpEnabled = v.Session_Dump_Enabled
-		bc.lastInfoDump = time.Now()
-		var bh BindHandler
+		bc.Tag = tag
+		bc.IgnoreTS = v.Ignore_Timestamps
+		bc.LocalTZ = v.Assume_Local_Timezone
+		bc.SessionDumpEnabled = v.Session_Dump_Enabled
+		bc.LastInfoDump = time.Now()
+		var bh handlers.BindHandler
 		switch ft {
 		case nfv5Type:
-			if bh, err = NewNetflowV5Handler(bc); err != nil {
-				lg.FatalCode(0, "NewNetflowV5Handler failed", log.KVErr(err))
+			if bh, err = handlers.NewNetflowV5Handler(bc); err != nil {
+				lg.FatalCode(0, "NewNetflowV5Handlerfailed", log.KVErr(err))
 				return
 			}
 		case ipfixType:
-			if bh, err = NewIpfixHandler(bc); err != nil {
+			if bh, err = handlers.NewIpfixHandler(bc); err != nil {
 				lg.FatalCode(0, "NewIpfixHandler failed", log.KVErr(err))
 				return
 			}
 		case sflowv5Type:
-			panic("TODO")
+			if bh, err = handlers.NewSFlowV5Handler(bc); err != nil {
+				lg.FatalCode(0, "NewSflowV5Handler failed", log.KVErr(err))
+				return
+			}
 		default:
 			lg.FatalCode(0, "invalid flow type", log.KV("flowtype", ft))
 			return
@@ -132,28 +143,24 @@ func main() {
 		if err = bh.Listen(v.Bind_String); err != nil {
 			lg.FatalCode(0, "failed to listen", log.KV("bindstring", bh.String()), log.KVErr(err))
 		}
-		id := addConn(bh)
+		id := connManager.Add(bh)
 		if err := bh.Start(id); err != nil {
 			lg.FatalCode(0, "start error", log.KV("collector", bh.String()), log.KVErr(err))
 		}
 		wg.Add(1)
 	}
-	debugout("Started %d handlers\n", len(cfg.Collector))
+	debugout.DebugOut("Started %d handlers\n", len(cfg.Collector))
 	//fire off our relay
 	doneChan := make(chan bool)
 	go relay(ch, doneChan, src, igst)
 
-	debugout("Running\n")
+	debugout.DebugOut("Running\n")
 
 	//listen for signals so we can close gracefully
 	utils.WaitForQuit()
 	ib.AnnounceShutdown()
-	debugout("Closing %d connections\n", connCount())
-	mtx.Lock()
-	for _, v := range connClosers {
-		v.Close()
-	}
-	mtx.Unlock() //must unlock so they can delete their connections
+	debugout.DebugOut("Closing %d connections\n", connManager.Count())
+	connManager.CloseAll()
 
 	//wait for everyone to exit with a timeout
 	wch := make(chan bool, 1)
@@ -169,7 +176,7 @@ func main() {
 		//wait for our ingest relay to exit
 		<-doneChan
 	case <-time.After(1 * time.Second):
-		lg.Error("failed to wait for all connections to close", log.KV("active", connCount()))
+		lg.Error("failed to wait for all connections to close", log.KV("active", connManager.Count()))
 	}
 
 	exitFn()
@@ -233,10 +240,4 @@ mainLoop:
 		}
 	}
 	close(done)
-}
-
-func debugout(format string, args ...interface{}) {
-	if debugOn {
-		fmt.Printf(format, args...)
-	}
 }

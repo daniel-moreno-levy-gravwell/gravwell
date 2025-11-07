@@ -157,5 +157,5 @@ func translateFlowType(s string) (flowType, error) {
 	case sflowv5Name:
 		return sflowv5Type, nil
 	}
-	return -1, errors.New("invalid reader type")
+	return -1, errors.New("Invalid reader type")
 }

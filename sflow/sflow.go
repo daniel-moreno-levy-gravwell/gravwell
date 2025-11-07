@@ -1,14 +1,10 @@
 /*************************************************************************
- * Copyright 2018 Gravwell, Inc. All rights reserved.
+ * Copyright 2025 Gravwell, Inc. All rights reserved.
  * Contact: <legal@gravwell.io>
  *
  * This software may be modified and distributed under the terms of the
  * BSD 2-clause license. See the LICENSE file for details.
  **************************************************************************/
 
- // Package sflow implements a low level high speed sflow encoder / decoder
+// Package sflow implements sflow datagram processing
 package sflow
-
-type SFlowV5 struct {
-	// TODO
-}

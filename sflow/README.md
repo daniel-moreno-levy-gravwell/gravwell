@@ -1,5 +1,3 @@
-# sflow v5
+# sflow
 
-Sflow V5 processing module.
-
-TODO THIS MIGHT BE COMPLETELY UNNECESSARY, WE WILL SEE
+Sflow processing code
