@@ -115,7 +115,7 @@ func main() {
 		switch ft {
 		case nfv5Type:
 			if bh, err = NewNetflowV5Handler(bc); err != nil {
-				lg.FatalCode(0, "NewNetflowV5Handlerfailed", log.KVErr(err))
+				lg.FatalCode(0, "NewNetflowV5Handler failed", log.KVErr(err))
 				return
 			}
 		case ipfixType:
@@ -123,6 +123,8 @@ func main() {
 				lg.FatalCode(0, "NewIpfixHandler failed", log.KVErr(err))
 				return
 			}
+		case sflowv5Type:
+			panic("TODO")
 		default:
 			lg.FatalCode(0, "invalid flow type", log.KV("flowtype", ft))
 			return

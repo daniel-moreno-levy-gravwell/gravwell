@@ -321,3 +321,24 @@ func (i *IpfixHandler) routine(id int) {
 		i.ch <- e
 	}
 }
+
+type SflowV5Handler struct {
+	bindConfig
+	// TODO
+}
+
+func (sf *SflowV5Handler) String() string {
+	return "TODO"
+}
+
+func (sf *SflowV5Handler) Close() error {
+	return errors.New("TODO")
+}
+
+func (sf *SflowV5Handler) Start(id int) error {
+	return errors.New("TODO")
+}
+
+func (sf *SflowV5Handler) Listen(bind string) error {
+	return errors.New("TODO")
+}
