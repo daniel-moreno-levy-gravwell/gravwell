@@ -4,10 +4,18 @@ import "fmt"
 
 type DebugOutFunc func(string, ...any)
 
-var DebugOut DebugOutFunc = Noop
+var Out DebugOutFunc = noop
 
-func Noop(format string, args ...any) {}
+func Verbose(enable bool) {
+	if enable {
+		Out = printf
+	} else {
+		Out = noop
+	}
+}
 
-func Printf(format string, args ...any) {
+func noop(format string, args ...any) {}
+
+func printf(format string, args ...any) {
 	fmt.Printf(format, args...)
 }

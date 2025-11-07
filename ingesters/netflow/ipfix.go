@@ -6,34 +6,37 @@
  * BSD 2-clause license. See the LICENSE file for details.
  **************************************************************************/
 
-package handlers
+package main
 
 import (
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
+	"github.com/gravwell/gravwell/v3/debug"
 	"github.com/gravwell/gravwell/v3/ingest/entry"
 	"github.com/gravwell/gravwell/v3/ingest/log"
-	"github.com/gravwell/gravwell/v3/ingesters/netflow/internal/debugout"
 	"github.com/gravwell/ipfix"
 )
 
 type IpfixHandler struct {
-	BindConfig
+	bindConfig
+	mtx   *sync.Mutex
 	c     *net.UDPConn
 	ready bool
 }
 
-func NewIpfixHandler(c BindConfig) (*IpfixHandler, error) {
+func NewIpfixHandler(c bindConfig) (*IpfixHandler, error) {
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
 
 	return &IpfixHandler{
-		BindConfig: c,
+		bindConfig: c,
+		mtx:        &sync.Mutex{},
 	}, nil
 }
 
@@ -42,8 +45,8 @@ func (i *IpfixHandler) String() string {
 }
 
 func (i *IpfixHandler) Listen(s string) (err error) {
-	i.ConnManager.Lock()
-	defer i.ConnManager.Unlock()
+	i.mtx.Lock()
+	defer i.mtx.Unlock()
 	if i.c != nil {
 		err = ErrAlreadyListening
 		return
@@ -62,15 +65,15 @@ func (i *IpfixHandler) Close() error {
 	if i == nil {
 		return ErrAlreadyClosed
 	}
-	i.ConnManager.Lock()
-	defer i.ConnManager.Unlock()
+	i.mtx.Lock()
+	defer i.mtx.Unlock()
 	i.ready = false
 	return i.c.Close()
 }
 
 func (i *IpfixHandler) Start(id int) error {
-	i.ConnManager.Lock()
-	defer i.ConnManager.Unlock()
+	i.mtx.Lock()
+	defer i.mtx.Unlock()
 	if !i.ready || i.c == nil {
 		fmt.Println(i.ready, i.c)
 		return ErrNotReady
@@ -107,8 +110,8 @@ func (s *sessionKey) String() string {
 }
 
 func (i *IpfixHandler) routine(id int) {
-	defer i.Wg.Done()
-	defer i.ConnManager.Del(id)
+	defer i.wg.Done()
+	defer delConn(id)
 
 	var l int
 	var ok bool
@@ -123,10 +126,10 @@ func (i *IpfixHandler) routine(id int) {
 	tbuff := make([]byte, 65507) // just go with max UDP packet size
 	for {
 		if l, addr, err = i.c.ReadFromUDP(tbuff); err != nil {
-			debugout.DebugOut("Error in ReadFromUDP: %v\n", err)
+			debug.Out("Error in ReadFromUDP: %v\n", err)
 			return
 		}
-		debugout.DebugOut("%v got packet of length %v from %v\n", time.Now(), l, addr.IP)
+		debug.Out("%v got packet of length %v from %v\n", time.Now(), l, addr.IP)
 
 		// For each message received, we want to parse it, extract and attach
 		// any relevant but missing templates, then re-marshal it and ingest
@@ -135,7 +138,7 @@ func (i *IpfixHandler) routine(id int) {
 		// We do this manually for speed
 		// Grab the version so we know where to look
 		if l < 2 {
-			debugout.DebugOut("Message too short for IPFIX or Netflow v9, skipping\n")
+			debug.Out("Message too short for IPFIX or Netflow v9, skipping\n")
 			continue
 		}
 		version = binary.BigEndian.Uint16(tbuff[0:])
@@ -144,7 +147,7 @@ func (i *IpfixHandler) routine(id int) {
 			// netflow v9
 			// Make sure it's long enough, a netflow v9 message header is 20 bytes long
 			if l < 20 {
-				debugout.DebugOut("Message too short for Netflow v9, skipping\n")
+				debug.Out("Message too short for Netflow v9, skipping\n")
 				continue
 			}
 			domainID = binary.BigEndian.Uint32(tbuff[16:])
@@ -152,7 +155,7 @@ func (i *IpfixHandler) routine(id int) {
 			// ipfix
 			// Make sure it's long enough, a ipfix message header is 16 bytes long
 			if l < 16 {
-				debugout.DebugOut("Message too short for IPFIX, skipping\n")
+				debug.Out("Message too short for IPFIX, skipping\n")
 				continue
 			}
 			domainID = binary.BigEndian.Uint32(tbuff[12:])
@@ -161,22 +164,22 @@ func (i *IpfixHandler) routine(id int) {
 		key := getSessionKey(domainID, addr.IP)
 		if s, ok = sessionMap[key]; !ok {
 			// if it's not in the map yet, we need to create a session
-			debugout.DebugOut("Creating new session for %v\n", key.String())
-			i.Log.Info("creating new session", log.KV("address", addr.IP), log.KV("domain", domainID))
+			debug.Out("Creating new session for %v\n", key.String())
+			lg.Info("creating new session", log.KV("address", addr.IP), log.KV("domain", domainID))
 			s = ipfix.NewSession()
 			sessionMap[key] = s
 		}
 
-		if i.SessionDumpEnabled && time.Since(i.LastInfoDump) > 1*time.Hour {
+		if i.sessionDumpEnabled && time.Since(i.lastInfoDump) > 1*time.Hour {
 			for k := range sessionMap {
-				i.Log.Info("IPFIX/Netflow v9 session dump", log.KV("session", k.String()))
+				lg.Info("IPFIX/Netflow v9 session dump", log.KV("session", k.String()))
 			}
-			i.LastInfoDump = time.Now()
+			i.lastInfoDump = time.Now()
 		}
 
 		msg, err := s.ParseBuffer(tbuff[:l])
 		if err != nil {
-			debugout.DebugOut("Rejecting packet: %v\n", err)
+			debug.Out("Rejecting packet: %v\n", err)
 			// must have been a bad packet
 			continue
 		}
@@ -187,32 +190,32 @@ func (i *IpfixHandler) routine(id int) {
 		var lbuff []byte
 		templates, err := s.LookupTemplateRecords(msg)
 		if err != nil || (len(msg.DataRecords) == 0 && len(msg.TemplateRecords) == 0) {
-			debugout.DebugOut("Failed to lookup template records for message, passing original (this is not necessarily an error)\n")
+			debug.Out("Failed to lookup template records for message, passing original (this is not necessarily an error)\n")
 			lbuff = make([]byte, l)
 			copy(lbuff, tbuff[0:l])
 		} else {
-			debugout.DebugOut("Attaching %d templates\n", len(templates))
+			debug.Out("Attaching %d templates\n", len(templates))
 			msg.TemplateRecords = templates
 			lbuff, err = s.Marshal(msg)
 			if err != nil {
 				// if we fail to marshal, I guess just send along the original
-				debugout.DebugOut("Failed to marshal message, passing original\n")
+				debug.Out("Failed to marshal message, passing original\n")
 				lbuff = make([]byte, l)
 				copy(lbuff, tbuff[0:l])
 			}
 		}
 
-		if i.IgnoreTS {
+		if i.ignoreTS {
 			ts = entry.Now()
 		} else {
 			ts = entry.UnixTime(int64(msg.Header.ExportTime), 0)
 		}
 		e := &entry.Entry{
-			Tag:  i.Tag,
+			Tag:  i.tag,
 			SRC:  addr.IP,
 			TS:   ts,
 			Data: lbuff,
 		}
-		i.Ch <- e
+		i.ch <- e
 	}
 }

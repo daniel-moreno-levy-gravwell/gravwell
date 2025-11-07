@@ -6,31 +6,34 @@
  * BSD 2-clause license. See the LICENSE file for details.
  **************************************************************************/
 
-package handlers
+package main
 
 import (
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 
 	"github.com/gravwell/gravwell/v3/ingest/entry"
 	"github.com/gravwell/gravwell/v3/netflow"
 )
 
 type NetflowV5Handler struct {
-	BindConfig
+	bindConfig
+	mtx   *sync.Mutex
 	c     *net.UDPConn
 	ready bool
 }
 
-func NewNetflowV5Handler(c BindConfig) (*NetflowV5Handler, error) {
+func NewNetflowV5Handler(c bindConfig) (*NetflowV5Handler, error) {
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
 
 	return &NetflowV5Handler{
-		BindConfig: c,
+		bindConfig: c,
+		mtx:        &sync.Mutex{},
 	}, nil
 }
 
@@ -39,8 +42,8 @@ func (n *NetflowV5Handler) String() string {
 }
 
 func (n *NetflowV5Handler) Listen(s string) (err error) {
-	n.ConnManager.Lock()
-	defer n.ConnManager.Unlock()
+	n.mtx.Lock()
+	defer n.mtx.Unlock()
 	if n.c != nil {
 		err = ErrAlreadyListening
 		return
@@ -59,15 +62,15 @@ func (n *NetflowV5Handler) Close() error {
 	if n == nil {
 		return ErrAlreadyClosed
 	}
-	n.ConnManager.Lock()
-	defer n.ConnManager.Unlock()
+	n.mtx.Lock()
+	defer n.mtx.Unlock()
 	n.ready = false
 	return n.c.Close()
 }
 
 func (n *NetflowV5Handler) Start(id int) error {
-	n.ConnManager.Lock()
-	defer n.ConnManager.Unlock()
+	n.mtx.Lock()
+	defer n.mtx.Unlock()
 	if !n.ready || n.c == nil {
 		fmt.Println(n.ready, n.c)
 		return ErrNotReady
@@ -80,8 +83,8 @@ func (n *NetflowV5Handler) Start(id int) error {
 }
 
 func (n *NetflowV5Handler) routine(id int) {
-	defer n.Wg.Done()
-	defer n.ConnManager.Del(id)
+	defer n.wg.Done()
+	defer delConn(id)
 	var nf netflow.NFv5
 	var l int
 	var addr *net.UDPAddr
@@ -97,17 +100,18 @@ func (n *NetflowV5Handler) routine(id int) {
 		}
 		lbuff := make([]byte, l)
 		copy(lbuff, tbuff[0:l])
-		if n.IgnoreTS {
+		if n.ignoreTS {
 			ts = entry.Now()
 		} else {
 			ts = entry.UnixTime(int64(binary.BigEndian.Uint32(lbuff[8:12])), int64(binary.BigEndian.Uint32(lbuff[12:16])))
 		}
 		e := &entry.Entry{
-			Tag:  n.Tag,
+			Tag:  n.tag,
 			SRC:  addr.IP,
 			TS:   ts,
 			Data: lbuff,
 		}
-		n.Ch <- e
+		n.ch <- e
 	}
 }
+

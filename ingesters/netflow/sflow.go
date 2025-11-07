@@ -6,27 +6,30 @@
  * BSD 2-clause license. See the LICENSE file for details.
  **************************************************************************/
 
-package handlers
+package main
 
 import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 )
 
 type SFlowV5Handler struct {
-	BindConfig
+	bindConfig
+	mtx   *sync.Mutex
 	c     *net.UDPConn
 	ready bool
 }
 
-func NewSFlowV5Handler(c BindConfig) (*SFlowV5Handler, error) {
+func NewSFlowV5Handler(c bindConfig) (*SFlowV5Handler, error) {
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
 
 	return &SFlowV5Handler{
-		BindConfig: c,
+		bindConfig: c,
+		mtx:        &sync.Mutex{},
 	}, nil
 }
 
@@ -35,8 +38,8 @@ func (s *SFlowV5Handler) String() string {
 }
 
 func (s *SFlowV5Handler) Listen(addr string) (err error) {
-	s.ConnManager.Lock()
-	defer s.ConnManager.Unlock()
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	if s.c != nil {
 		err = ErrAlreadyListening
 		return
@@ -55,15 +58,15 @@ func (s *SFlowV5Handler) Close() error {
 	if s == nil {
 		return ErrAlreadyClosed
 	}
-	s.ConnManager.Lock()
-	defer s.ConnManager.Unlock()
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	s.ready = false
 	return s.c.Close()
 }
 
 func (s *SFlowV5Handler) Start(id int) error {
-	s.ConnManager.Lock()
-	defer s.ConnManager.Unlock()
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	if !s.ready || s.c == nil {
 		fmt.Println(s.ready, s.c)
 		return ErrNotReady
@@ -76,5 +79,5 @@ func (s *SFlowV5Handler) Start(id int) error {
 }
 
 func (s *SFlowV5Handler) routine(id int) {
-	// TODO 
+	// TODO
 }
