@@ -21,9 +21,12 @@ import (
 	"time"
 
 	"github.com/gravwell/gravwell/v4/ingest/entry"
+	"github.com/gravwell/gravwell/v4/ingest/log"
 )
 
 const DEFAULT_TIMEOUT = 2 * time.Second
+
+var defaultLogger log.IngestLogger
 
 type ChanCacheTester struct {
 	V    int
@@ -35,6 +38,7 @@ func (t *ChanCacheTester) Size() uint64 {
 }
 
 func TestMain(m *testing.M) {
+	defaultLogger = log.NoLogger()
 	gob.Register(&ChanCacheTester{})
 	os.Exit(m.Run())
 }
@@ -43,19 +47,19 @@ func TestFlock(t *testing.T) {
 	dir := t.TempDir()
 	defer os.RemoveAll(dir)
 
-	c, err := NewChanCacher(2, dir, 0)
+	c, err := NewChanCacher(2, dir, 0, defaultLogger)
 	if err != nil {
 		t.Fatal(err)
 	}
 	close(c.In)
 	<-c.Out
 
-	c, err = NewChanCacher(2, dir, 0)
+	c, err = NewChanCacher(2, dir, 0, defaultLogger)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = NewChanCacher(2, dir, 0)
+	_, err = NewChanCacher(2, dir, 0, defaultLogger)
 	if err == nil {
 		t.Fatal("lock taken twice!")
 	}
@@ -65,7 +69,7 @@ func TestFlock(t *testing.T) {
 }
 
 func TestBlockDepth(t *testing.T) {
-	c, _ := NewChanCacher(2, "", 0)
+	c, _ := NewChanCacher(2, "", 0, defaultLogger)
 
 	v := &ChanCacheTester{V: 1}
 
@@ -105,7 +109,7 @@ func TestBlockDepth(t *testing.T) {
 
 func TestTearDownCache(t *testing.T) {
 	dir := t.TempDir()
-	c, _ := NewChanCacher(2, dir, 0)
+	c, _ := NewChanCacher(2, dir, 0, defaultLogger)
 
 	for i := 0; i < 100; i++ {
 		select {
@@ -164,7 +168,7 @@ func TestTearDownCache(t *testing.T) {
 }
 
 func TestTearDownNoCache(t *testing.T) {
-	c, _ := NewChanCacher(2, "", 0)
+	c, _ := NewChanCacher(2, "", 0, defaultLogger)
 
 	v := &ChanCacheTester{V: 1}
 
@@ -205,7 +209,7 @@ func TestTearDownNoCache(t *testing.T) {
 
 func TestRecover(t *testing.T) {
 	dir := t.TempDir()
-	c, _ := NewChanCacher(2, dir, 0)
+	c, _ := NewChanCacher(2, dir, 0, defaultLogger)
 
 	for i := 0; i < 100; i++ {
 		select {
@@ -224,7 +228,7 @@ func TestRecover(t *testing.T) {
 	// now create a new ChanCacher in dir and read the data out.
 	defer os.RemoveAll(dir)
 
-	c, _ = NewChanCacher(2, dir, 0)
+	c, _ = NewChanCacher(2, dir, 0, defaultLogger)
 
 	// reads on the cache are not guaranteed to be in-order, so instead we
 	// count the number of times we've seen each value, and expect to see a
@@ -261,7 +265,7 @@ func TestRecover(t *testing.T) {
 func TestCommit(t *testing.T) {
 	dir := t.TempDir()
 
-	c, _ := NewChanCacher(2, dir, 0)
+	c, _ := NewChanCacher(2, dir, 0, defaultLogger)
 
 	for i := 0; i < 100; i++ {
 		select {
@@ -292,7 +296,7 @@ func TestCommit(t *testing.T) {
 func TestDrain(t *testing.T) {
 	dir := t.TempDir()
 
-	c, _ := NewChanCacher(2, dir, 0)
+	c, _ := NewChanCacher(2, dir, 0, defaultLogger)
 
 	for i := 0; i < 100; i++ {
 		select {
@@ -350,7 +354,7 @@ func TestDrain(t *testing.T) {
 func TestCacheStartStop(t *testing.T) {
 	dir := t.TempDir()
 
-	c, _ := NewChanCacher(2, dir, 0)
+	c, _ := NewChanCacher(2, dir, 0, defaultLogger)
 
 	for i := 0; i < 99; i++ {
 		select {
@@ -412,7 +416,7 @@ func TestCacheStartStop(t *testing.T) {
 func TestCache(t *testing.T) {
 	dir := t.TempDir()
 
-	c, _ := NewChanCacher(2, dir, 0)
+	c, _ := NewChanCacher(2, dir, 0, defaultLogger)
 
 	for i := 0; i < 100; i++ {
 		select {
@@ -467,7 +471,7 @@ func TestDetritus(t *testing.T) {
 		t.FailNow()
 	}
 
-	NewChanCacher(2, dir, 0)
+	NewChanCacher(2, dir, 0, defaultLogger)
 
 	if _, err = os.Stat(f.Name()); err == nil {
 		t.Fatal("failed to get an error on statting merge file")
@@ -482,7 +486,7 @@ func TestMerge(t *testing.T) {
 	staging := t.TempDir()
 	dir := t.TempDir()
 
-	c, _ := NewChanCacher(2, dir, 0)
+	c, _ := NewChanCacher(2, dir, 0, defaultLogger)
 
 	for i := 0; i < 100; i++ {
 		select {
@@ -524,7 +528,7 @@ func TestMerge(t *testing.T) {
 	}
 
 	// now do it again
-	c, _ = NewChanCacher(2, dir, 0)
+	c, _ = NewChanCacher(2, dir, 0, defaultLogger)
 
 	for i := 100; i < 200; i++ {
 		select {
@@ -566,7 +570,7 @@ func TestMerge(t *testing.T) {
 		t.FailNow()
 	}
 
-	c, _ = NewChanCacher(2, dir, 0)
+	c, _ = NewChanCacher(2, dir, 0, defaultLogger)
 
 	// reads on the cache are not guaranteed to be in-order, so instead we
 	// count the number of times we've seen each value, and expect to see a
@@ -603,7 +607,7 @@ func TestMerge(t *testing.T) {
 func TestCacheHasData(t *testing.T) {
 	dir := t.TempDir()
 
-	c, _ := NewChanCacher(2, dir, 0)
+	c, _ := NewChanCacher(2, dir, 0, defaultLogger)
 
 	if c.CacheHasData() {
 		t.Fail()
@@ -627,7 +631,7 @@ func TestCacheHasData(t *testing.T) {
 func TestCacheMaxSize(t *testing.T) {
 	dir := t.TempDir()
 
-	c, _ := NewChanCacher(0, dir, 10)
+	c, _ := NewChanCacher(0, dir, 10, defaultLogger)
 
 	c.In <- &ChanCacheTester{V: 1}
 	c.In <- &ChanCacheTester{V: 1}
@@ -656,7 +660,7 @@ func TestCacheMaxSize(t *testing.T) {
 // attached, and read them back out.
 func TestCacheEntries(t *testing.T) {
 	dir := t.TempDir()
-	c, _ := NewChanCacher(2, dir, 0)
+	c, _ := NewChanCacher(2, dir, 0, defaultLogger)
 
 	for i := 0; i < 100; i++ {
 		e := &entry.Entry{
@@ -676,7 +680,7 @@ func TestCacheEntries(t *testing.T) {
 	c.Commit()
 	<-c.Out
 
-	c, _ = NewChanCacher(2, dir, 0)
+	c, _ = NewChanCacher(2, dir, 0, defaultLogger)
 
 	// reads on the cache are not guaranteed to be in-order, so instead we
 	// count the number of times we've seen each value, and expect to see a
@@ -738,7 +742,7 @@ func TestCacheOldEntries(t *testing.T) {
 	cpF("cache_a")
 	cpF("cache_b")
 	cpF("lock")
-	c, _ := NewChanCacher(2, dir, 0)
+	c, _ := NewChanCacher(2, dir, 0, defaultLogger)
 
 	// reads on the cache are not guaranteed to be in-order, so instead we
 	// count the number of times we've seen each value, and expect to see a
@@ -938,7 +942,7 @@ func Test_getQuarantineCacheName(t *testing.T) {
 
 func TestSpam(t *testing.T) {
 	dir := t.TempDir()
-	c, _ := NewChanCacher(100, dir, 1024*1024*1000)
+	c, _ := NewChanCacher(100, dir, 1024*1024*1000, defaultLogger)
 
 	go func() {
 		for i := 0; i < 5000000; i++ {
@@ -977,7 +981,7 @@ func BenchmarkReference(b *testing.B) {
 }
 
 func BenchmarkUnbufferedSmall(b *testing.B) {
-	c, _ := NewChanCacher(0, "", 0)
+	c, _ := NewChanCacher(0, "", 0, defaultLogger)
 
 	v := &ChanCacheTester{V: 1}
 
@@ -995,7 +999,7 @@ func BenchmarkUnbufferedSmall(b *testing.B) {
 }
 
 func BenchmarkBufferedSmall(b *testing.B) {
-	c, _ := NewChanCacher(10, "", 0)
+	c, _ := NewChanCacher(10, "", 0, defaultLogger)
 
 	v := &ChanCacheTester{V: 1}
 
@@ -1013,7 +1017,7 @@ func BenchmarkBufferedSmall(b *testing.B) {
 }
 
 func BenchmarkBufferedLarge(b *testing.B) {
-	c, _ := NewChanCacher(1000000, "", 0)
+	c, _ := NewChanCacher(1000000, "", 0, defaultLogger)
 
 	v := &ChanCacheTester{V: 1}
 
@@ -1032,7 +1036,7 @@ func BenchmarkBufferedLarge(b *testing.B) {
 
 func BenchmarkCacheBlocked(b *testing.B) {
 	dir := b.TempDir()
-	c, _ := NewChanCacher(2, dir, 0)
+	c, _ := NewChanCacher(2, dir, 0, defaultLogger)
 
 	COUNT := 10000000
 
@@ -1047,7 +1051,7 @@ func BenchmarkCacheBlocked(b *testing.B) {
 
 func BenchmarkCacheStreaming(b *testing.B) {
 	dir := b.TempDir()
-	c, _ := NewChanCacher(2, dir, 0)
+	c, _ := NewChanCacher(2, dir, 0, defaultLogger)
 
 	COUNT := 10000000
 

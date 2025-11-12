@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/gravwell/gravwell/v4/ingest/log"
 )
 
 var (
@@ -58,6 +59,8 @@ type ChanCacher struct {
 	cacheCommitted bool
 
 	fileLock *flock.Flock
+
+	lgr log.IngestLogger
 }
 
 // CacheDirPerm permission on cache directories
@@ -67,7 +70,7 @@ const CacheDirPerm = 0750
 const CacheFilePerm = 0640
 
 // CacheFlagPermissions permissions on cache files when opening
-const CacheFlagPermissions = os.O_CREATE|os.O_RDWR
+const CacheFlagPermissions = os.O_CREATE | os.O_RDWR
 
 // NewChanCacher creates a new ChanCacher with maximum depth, and optional backing file.
 // If maxDepth == 0, the ChanCacher will be unbuffered. If maxDepth == -1, the
@@ -81,7 +84,7 @@ const CacheFlagPermissions = os.O_CREATE|os.O_RDWR
 // the ChanCacher will immediately attempt to drain them from disk. In this
 // way, you can recover data sent to disk on a crash or previous use of
 // Commit().
-func NewChanCacher(maxDepth int, cachePath string, maxSize int) (*ChanCacher, error) {
+func NewChanCacher(maxDepth int, cachePath string, maxSize int, lgr log.IngestLogger) (*ChanCacher, error) {
 	if cachePath != "" {
 		if fi, err := os.Stat(cachePath); err != nil {
 			if !os.IsNotExist(err) {
@@ -107,6 +110,7 @@ func NewChanCacher(maxDepth int, cachePath string, maxSize int) (*ChanCacher, er
 		cacheDone:   make(chan bool),
 		cacheAck:    make(chan bool),
 		maxSize:     maxSize,
+		lgr:         lgr,
 	}
 
 	// we start the cache unpaused, and because of go idioms, we have to
@@ -520,21 +524,45 @@ func merge(a, b string) error {
 }
 
 // Attempt to open / create a cache file. Will move cache under `quarantineFolder`,
-// inside `cPath`, if cache is already present in `cPath` and cannot be opened.
+// inside `cPath`, if cache is already present in `cPath` and cannot be opened or parsed.
 // Returns file handler to the cache file.
 func openCache(cPath, quarantineFolder string) (*os.File, error) {
-	r, err := os.OpenFile(cPath, CacheFlagPermissions, CacheFilePerm)
-	if err == nil {
-		return r, nil
+	c, err := os.OpenFile(cPath, CacheFlagPermissions, CacheFilePerm)
+	if err != nil {
+		if errors.Is(err, os.ErrPermission) {
+			return quarantineCache(cPath, quarantineFolder)
+		}
+
+		return nil, err
 	}
 
-	// Only error we can realistically do something about, everything else is configuration
-	// related, should bubble up.
-	if errors.Is(err, os.ErrPermission) {
+	// Validate that the cache is readable / not corrupted
+	if err = validateCache(c); err != nil {
+		c.Close()
 		return quarantineCache(cPath, quarantineFolder)
 	}
 
-	return nil, err
+	return c, nil
+}
+
+func validateCache(c *os.File) error {
+	gdec := gob.NewDecoder(c)
+
+	var err error
+	var v any
+	for {
+		err = gdec.Decode(&v)
+		if err != nil {
+			if err != io.EOF {
+				return err
+			}
+			break
+		}
+	}
+
+	_, err = c.Seek(0, io.SeekStart)
+
+	return err
 }
 
 // Moves file in `cPath` to a `quarantineDir` folder.
