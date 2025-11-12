@@ -805,7 +805,7 @@ func Test_openCache(t *testing.T) {
 		t.Fatalf("could not change permissions on initial cache file: %v", err)
 	}
 
-	finalCacheHandler, err := openCache(cacheFileName, quarantineFolder)
+	finalCacheHandler, err := openCache(cacheFileName, quarantineFolder, defaultLogger)
 	if err != nil {
 		t.Fatalf("could not create cache file: %v", err)
 	}
@@ -820,6 +820,10 @@ func Test_openCache(t *testing.T) {
 		t.Fatal("initial file was modified when moved to quarantine location")
 	}
 
+	if err = os.RemoveAll(quarantineFile); err != nil {
+		t.Fatalf("could not clean up quarantine file: %v", err)
+	}
+
 	// Trigger some other error flow (file is a directory)
 	if err := os.RemoveAll(cacheFileName); err != nil {
 		t.Fatalf("could not remove initial cache file: %v", err)
@@ -828,10 +832,46 @@ func Test_openCache(t *testing.T) {
 		t.Fatalf("could not create initial cache file as directory: %v", err)
 	}
 
-	cacheH, err := openCache(cacheFileName, quarantineFolder)
+	cacheH, err := openCache(cacheFileName, quarantineFolder, defaultLogger)
 	if cacheH != nil {
 		cacheH.Close()
 		t.Fatalf("opened file when it should have bubbled error: %v", err)
+	}
+
+	// Trigger validation error flow
+	if err := os.RemoveAll(cacheFileName); err != nil {
+		t.Fatalf("could not remove initial cache dir: %v", err)
+	}
+	corruptedCacheHandler, err := os.OpenFile(cacheFileName, CacheFlagPermissions, CacheFilePerm)
+	if err != nil {
+		t.Fatalf("could not create mock corrupted cache file: %v", err)
+	}
+	defer corruptedCacheHandler.Close()
+	if _, err := corruptedCacheHandler.WriteString("notvalid"); err != nil {
+		t.Fatalf("could not write mock corrupted cache file: %v", err)
+	}
+	corruptedCacheStats, err := corruptedCacheHandler.Stat()
+	if err != nil {
+		t.Fatalf("could not get stats on mock corrupted cache file: %v", err)
+	}
+
+	newCacheHandler, err := openCache(cacheFileName, quarantineFolder, defaultLogger)
+	if err != nil {
+		t.Fatalf("could not create cache file: %v", err)
+	}
+	defer newCacheHandler.Close()
+
+	quarantineFileStats, err = os.Stat(quarantineFile)
+	if err != nil {
+		t.Fatalf("could not get quarantine file stats: %v", err)
+	}
+
+	if !os.SameFile(corruptedCacheStats, quarantineFileStats) {
+		t.Fatalf("corrupted cache was not quarantined")
+	}
+
+	if err = os.RemoveAll(quarantineFile); err != nil {
+		t.Fatalf("could not clean up quarantine file: %v", err)
 	}
 }
 
@@ -856,7 +896,7 @@ func Test_quarantineCache(t *testing.T) {
 		t.Fatalf("could not get initial cache file stats: %v", err)
 	}
 
-	fHandler, err := quarantineCache(cacheFileName, quarantineFolder)
+	fHandler, err := quarantineCache(cacheFileName, quarantineFolder, defaultLogger)
 	expectedQuarantineLocation := filepath.Join(quarantineDir, "cache-a.1")
 	if err != nil {
 		t.Fatal(err)

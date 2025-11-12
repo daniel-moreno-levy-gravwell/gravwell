@@ -316,10 +316,12 @@ func newIngestMuxer(c MuxerConfig) (*IngestMuxer, error) {
 	if c.CachePath != "" {
 		cache, err = chancacher.NewChanCacher(c.CacheDepth, filepath.Join(c.CachePath, "e"), mb*c.CacheSize, c.Logger)
 		if err != nil {
+			c.Logger.Error("Error initializing read cache", log.KVErr(err))
 			return nil, err
 		}
 		bcache, err = chancacher.NewChanCacher(c.CacheDepth, filepath.Join(c.CachePath, "b"), mb*c.CacheSize, c.Logger)
 		if err != nil {
+			c.Logger.Error("Error initializing write cache", log.KVErr(err))
 			return nil, err
 		}
 		if c.CacheMode == CacheModeFail {

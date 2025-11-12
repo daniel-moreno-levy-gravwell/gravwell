@@ -152,12 +152,12 @@ func NewChanCacher(maxDepth int, cachePath string, maxSize int, lgr log.IngestLo
 
 		// create r and w files
 		quarantineFolder := "quarantine"
-		r, err := openCache(rPath, quarantineFolder)
+		r, err := openCache(rPath, quarantineFolder, c.lgr)
 		if err != nil {
 			return nil, err
 		}
 
-		w, err := openCache(wPath, quarantineFolder)
+		w, err := openCache(wPath, quarantineFolder, c.lgr)
 		if err != nil {
 			return nil, err
 		}
@@ -284,7 +284,9 @@ func (c *ChanCacher) cacheHandler() {
 
 			c.Out <- v
 		}
-		// TODO log if err != io.EOF
+		if err != io.EOF {
+			c.lgr.Error("Unexpected error while parsing cache", log.KVErr(err))
+		}
 
 		c.cacheReading = false
 		c.cacheR.Seek(0, 0)
@@ -330,8 +332,9 @@ func (c *ChanCacher) cacheValue(v interface{}) {
 
 	c.cacheLock.Lock()
 	defer c.cacheLock.Unlock()
-	c.cacheEnc.Encode(&v)
-	// TODO log if err := c.cacheEnc.Encode(&v); err != nil
+	if err := c.cacheEnc.Encode(&v); err != nil {
+		c.lgr.Error("failed to encode value into cache", log.KV("value", v), log.KVErr(err))
+	}
 	c.cacheModified = true
 }
 
@@ -526,11 +529,13 @@ func merge(a, b string) error {
 // Attempt to open / create a cache file. Will move cache under `quarantineFolder`,
 // inside `cPath`, if cache is already present in `cPath` and cannot be opened or parsed.
 // Returns file handler to the cache file.
-func openCache(cPath, quarantineFolder string) (*os.File, error) {
+func openCache(cPath, quarantineFolder string, lgr log.IngestLogger) (*os.File, error) {
 	c, err := os.OpenFile(cPath, CacheFlagPermissions, CacheFilePerm)
 	if err != nil {
+		lgr.Error("Failed to open cache file", log.KV("cache", cPath), log.KVErr(err))
+
 		if errors.Is(err, os.ErrPermission) {
-			return quarantineCache(cPath, quarantineFolder)
+			return quarantineCache(cPath, quarantineFolder, lgr)
 		}
 
 		return nil, err
@@ -539,42 +544,26 @@ func openCache(cPath, quarantineFolder string) (*os.File, error) {
 	// Validate that the cache is readable / not corrupted
 	if err = validateCache(c); err != nil {
 		c.Close()
-		return quarantineCache(cPath, quarantineFolder)
+
+		lgr.Error("Cannot parse cache file", log.KV("cache", cPath), log.KVErr(err))
+
+		return quarantineCache(cPath, quarantineFolder, lgr)
 	}
 
 	return c, nil
-}
-
-func validateCache(c *os.File) error {
-	gdec := gob.NewDecoder(c)
-
-	var err error
-	var v any
-	for {
-		err = gdec.Decode(&v)
-		if err != nil {
-			if err != io.EOF {
-				return err
-			}
-			break
-		}
-	}
-
-	_, err = c.Seek(0, io.SeekStart)
-
-	return err
 }
 
 // Moves file in `cPath` to a `quarantineDir` folder.
 // Creates a new file in `cPath` and returns handle on it.
 // File moved to quarantineDir will follow naming convention:
 // `{quarantineDir}/{cacheBaseName}.{1,2,3...}`
-func quarantineCache(cPath, quarantineFolder string) (*os.File, error) {
+func quarantineCache(cPath, quarantineFolder string, lgr log.IngestLogger) (*os.File, error) {
 	cDir := filepath.Dir(cPath)
 	quarantineDir := filepath.Join(cDir, quarantineFolder)
 
 	err := os.MkdirAll(quarantineDir, CacheDirPerm)
 	if err != nil {
+		lgr.Error("Failed to create quarantine dir", log.KV("quarantineDir", quarantineDir), log.KVErr(err))
 		return nil, err
 	}
 
@@ -584,15 +573,26 @@ func quarantineCache(cPath, quarantineFolder string) (*os.File, error) {
 	// Check if quarantine caches already exist
 	qCaches, err := filepath.Glob(fmt.Sprintf("%s.*", quarantineFilePathBase))
 	if err != nil {
+		lgr.Error("Could not read quarantine directory", log.KV("quarantineDir", quarantineDir), log.KVErr(err))
+
 		return nil, err
 	}
 
 	newCPath := getQuarantineCacheName(quarantineFilePathBase, qCaches)
+
+	lgr.Warn("Attempting to quarantine file", log.KV("cache", cPath), log.KV("quarantineFile", newCPath))
 	if err = os.Rename(cPath, newCPath); err != nil {
+		lgr.Error("Failed to quarantine cache", log.KV("cache", cPath), log.KV("quarantineFile", newCPath), log.KVErr(err))
 		return nil, err
 	}
 
-	return os.OpenFile(cPath, CacheFlagPermissions, CacheFilePerm)
+	res, err := os.OpenFile(cPath, CacheFlagPermissions, CacheFilePerm)
+	if err != nil {
+		lgr.Error("Failed to open new cache file", log.KV("cache", cPath), log.KVErr(err))
+		return nil, err
+	}
+
+	return res, nil
 }
 
 func getQuarantineCacheName(quarantineFilePathBase string, matches []string) string {
@@ -613,4 +613,24 @@ func getQuarantineCacheName(quarantineFilePathBase string, matches []string) str
 	}
 
 	return fmt.Sprintf("%s.%d", quarantineFilePathBase, maxVal+1)
+}
+
+func validateCache(c *os.File) error {
+	gdec := gob.NewDecoder(c)
+
+	var err error
+	var v any
+	for {
+		err = gdec.Decode(&v)
+		if err != nil {
+			if err != io.EOF {
+				return err
+			}
+			break
+		}
+	}
+
+	_, err = c.Seek(0, io.SeekStart)
+
+	return err
 }
