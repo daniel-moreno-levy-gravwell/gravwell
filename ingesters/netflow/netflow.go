@@ -114,4 +114,3 @@ func (n *NetflowV5Handler) routine(id int) {
 		n.ch <- e
 	}
 }
-

@@ -42,4 +42,3 @@ func connCount() int {
 	defer mtx.Unlock()
 	return len(connClosers)
 }
-
