@@ -35,6 +35,10 @@ func NewSFlowV5Handler(c bindConfig) (*SFlowV5Handler, error) {
 		return nil, err
 	}
 
+	if !c.ignoreTS {
+		lg.Warn("Ignore_Timestamp=false has no effect in sflow collector")
+	}
+
 	return &SFlowV5Handler{
 		bindConfig: c,
 		mtx:        &sync.Mutex{},
@@ -90,7 +94,6 @@ func (s *SFlowV5Handler) routine(id int) {
 	defer s.wg.Done()
 	defer delConn(id)
 	var addr *net.UDPAddr
-	var ts entry.Timestamp
 	var err error
 	var dSize int
 	tbuf := make([]byte, defaultDatagramSize)
@@ -101,22 +104,19 @@ func (s *SFlowV5Handler) routine(id int) {
 		}
 		decoder := sflow.NewDecoder(bytes.NewReader(tbuf))
 		_, err = decoder.Decode()
-		if err != nil {
+		// See https://sflow.org/sflow_version_5.txt - Pag 24-25
+		// Vendor specific samples are permitted as part of the protocol.
+		if err != nil && err != sflow.ErrUnknownSampleType {
 			continue //there isn't much we can do about bad packets...
 		}
 
-		// TODO  I need to ask the trope about this. There is only uptime, no timestamp in sflow
-		if s.ignoreTS {
-			ts = entry.Now()
-		} else {
-			ts = entry.Now()
-		}
 		lbuf := make([]byte, dSize)
 		copy(lbuf, tbuf[:dSize])
 		e := &entry.Entry{
-			Tag:  s.tag,
-			SRC:  addr.IP,
-			TS:   ts,
+			Tag: s.tag,
+			SRC: addr.IP,
+			// sflow does not have a timestamp for when the packet was sent.
+			TS:   entry.Now(),
 			Data: lbuf,
 		}
 		s.ch <- e

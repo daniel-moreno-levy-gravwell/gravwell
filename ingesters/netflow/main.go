@@ -59,9 +59,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to assign configuration %v %v\n", err, cfg == nil)
 		return
 	}
-	if ib.Verbose {
-		debug.Verbose(true)
-	}
+	debug.SetPrintStdout(ib.Verbose)
 	lg = ib.Logger
 	id, ok := cfg.IngesterUUID()
 	if !ok {

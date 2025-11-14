@@ -53,4 +53,3 @@ func (bc bindConfig) Validate() error {
 	}
 	return nil
 }
-
