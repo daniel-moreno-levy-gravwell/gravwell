@@ -126,7 +126,7 @@ func main() {
 			}
 		case sflowv5Type:
 			if bh, err = NewSFlowV5Handler(bc); err != nil {
-				lg.FatalCode(0, " NewSFlowV5Handler failed", log.KVErr(err))
+				lg.FatalCode(0, "NewSFlowV5Handler failed", log.KVErr(err))
 				return
 			}
 		default:

@@ -9,11 +9,19 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net"
 	"sync"
+
+	"github.com/Cistern/sflow"
+	"github.com/gravwell/gravwell/v3/ingest/entry"
 )
+
+// See `sFlowRcvrMaximumDatagramSize` in https://sflow.org/sflow_version_5.txt , page 17-18.
+// 1400 + 648 to spare
+const defaultDatagramSize = 2048
 
 type SFlowV5Handler struct {
 	bindConfig
@@ -79,5 +87,38 @@ func (s *SFlowV5Handler) Start(id int) error {
 }
 
 func (s *SFlowV5Handler) routine(id int) {
-	// TODO
+	defer s.wg.Done()
+	defer delConn(id)
+	var addr *net.UDPAddr
+	var ts entry.Timestamp
+	var err error
+	var dSize int
+	tbuf := make([]byte, defaultDatagramSize)
+	for {
+		dSize, addr, err = s.c.ReadFromUDP(tbuf)
+		if err != nil {
+			return
+		}
+		decoder := sflow.NewDecoder(bytes.NewReader(tbuf))
+		_, err = decoder.Decode()
+		if err != nil {
+			continue //there isn't much we can do about bad packets...
+		}
+
+		// TODO  I need to ask the trope about this. There is only uptime, no timestamp in sflow
+		if s.ignoreTS {
+			ts = entry.Now()
+		} else {
+			ts = entry.Now()
+		}
+		lbuf := make([]byte, dSize)
+		copy(lbuf, tbuf[:dSize])
+		e := &entry.Entry{
+			Tag:  s.tag,
+			SRC:  addr.IP,
+			TS:   ts,
+			Data: lbuf,
+		}
+		s.ch <- e
+	}
 }

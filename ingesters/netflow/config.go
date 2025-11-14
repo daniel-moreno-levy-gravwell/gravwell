@@ -138,7 +138,7 @@ func (ft flowType) String() string {
 	case ipfixType:
 		return "IPFIX"
 	case sflowv5Type:
-		return "sflow V5"
+		return "sFlow V5"
 	}
 	return "unknown"
 }

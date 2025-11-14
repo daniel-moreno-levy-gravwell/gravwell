@@ -1,3 +1,0 @@
-# sflow
-
-Sflow processing code
