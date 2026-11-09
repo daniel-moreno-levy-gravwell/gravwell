@@ -1122,6 +1122,8 @@ func (s *Search) sidParam() (p urlParam) {
 	return
 }
 
+// refresh renews the search session. iu is the refresh interval in seconds;
+// zero leaves the current interval unchanged.
 func (s *Search) refresh(iu uint) error {
 	if s == nil || s.cli == nil {
 		//uuuuh... bye...
