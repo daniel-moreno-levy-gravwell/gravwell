@@ -617,7 +617,7 @@ func TestSearchSessionRefreshResultMarshal(t *testing.T) {
 		Interval:  3,
 		Expires:   NewNullable(expires),
 	}}
-	b, err := json.Marshal(refreshed)
+	b, err := v2.Marshal(refreshed, jsoncompat.Opts)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -632,7 +632,7 @@ func TestSearchSessionRefreshResultMarshal(t *testing.T) {
 	}
 
 	refreshed.Refreshed.Expires.SetNull()
-	b, err = json.Marshal(refreshed)
+	b, err = v2.Marshal(refreshed, jsoncompat.Opts)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -645,7 +645,7 @@ func TestSearchSessionRefreshResultMarshal(t *testing.T) {
 		SessionID: uuid.Nil,
 		Error:     "session not found",
 	}}
-	b, err = json.Marshal(failed)
+	b, err = v2.Marshal(failed, jsoncompat.Opts)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -689,14 +689,14 @@ func TestSearchSessionRefreshResultUnmarshal(t *testing.T) {
 }
 
 func TestSearchSessionRefreshResultErrors(t *testing.T) {
-	if _, err := json.Marshal(SearchSessionRefreshResult{}); !errors.Is(err, ErrSearchSessionRefreshResultInvalid) {
+	if _, err := v2.Marshal(SearchSessionRefreshResult{}, jsoncompat.Opts); !errors.Is(err, ErrSearchSessionRefreshResultInvalid) {
 		t.Fatalf("empty result error = %v, want ErrSearchSessionRefreshResultInvalid", err)
 	}
 	both := SearchSessionRefreshResult{
 		Refreshed: &SearchSessionRefreshed{},
 		Failed:    &SearchSessionRefreshFailed{},
 	}
-	if _, err := json.Marshal(both); !errors.Is(err, ErrSearchSessionRefreshResultAmbiguous) {
+	if _, err := v2.Marshal(both, jsoncompat.Opts); !errors.Is(err, ErrSearchSessionRefreshResultAmbiguous) {
 		t.Fatalf("both-variants error = %v, want ErrSearchSessionRefreshResultAmbiguous", err)
 	}
 }

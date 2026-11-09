@@ -273,48 +273,58 @@ type SearchSessionRefreshResult struct {
 	Failed    *SearchSessionRefreshFailed
 }
 
-func (r SearchSessionRefreshResult) MarshalJSON() ([]byte, error) {
+// searchSessionRefreshResultWire is the flattened JSON shape of the union.
+// Kind selects which fields belong to the variant.
+type searchSessionRefreshResultWire struct {
+	Kind      SearchSessionRefreshResultKind
+	SearchID  string
+	SessionID uuid.UUID
+	Interval  uint
+	Expires   Nullable[time.Time]
+	Error     string
+}
+
+func (r SearchSessionRefreshResult) MarshalJSONTo(enc *jsontext.Encoder) error {
 	switch {
 	case r.Refreshed != nil && r.Failed == nil:
 		v := *r.Refreshed
 		v.Kind = SearchSessionRefreshResultKindRefreshed
-		return json.Marshal(v)
+		return json.MarshalEncode(enc, v)
 	case r.Failed != nil && r.Refreshed == nil:
 		v := *r.Failed
 		v.Kind = SearchSessionRefreshResultKindFailed
-		return json.Marshal(v)
+		return json.MarshalEncode(enc, v)
 	case r.Refreshed == nil && r.Failed == nil:
-		return nil, ErrSearchSessionRefreshResultInvalid
+		return ErrSearchSessionRefreshResultInvalid
 	default:
-		return nil, ErrSearchSessionRefreshResultAmbiguous
+		return ErrSearchSessionRefreshResultAmbiguous
 	}
 }
 
-func (r *SearchSessionRefreshResult) UnmarshalJSON(data []byte) error {
+func (r *SearchSessionRefreshResult) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	*r = SearchSessionRefreshResult{}
-	var probe struct {
-		Kind SearchSessionRefreshResultKind
-	}
-	if err := json.Unmarshal(data, &probe); err != nil {
+	var w searchSessionRefreshResultWire
+	if err := json.UnmarshalDecode(dec, &w); err != nil {
 		return err
 	}
-	switch probe.Kind {
+	switch w.Kind {
 	case SearchSessionRefreshResultKindRefreshed:
-		var v SearchSessionRefreshed
-		if err := json.Unmarshal(data, &v); err != nil {
-			return err
+		r.Refreshed = &SearchSessionRefreshed{
+			Kind:      w.Kind,
+			SearchID:  w.SearchID,
+			SessionID: w.SessionID,
+			Interval:  w.Interval,
+			Expires:   w.Expires,
 		}
-		v.Kind = probe.Kind
-		r.Refreshed = &v
 	case SearchSessionRefreshResultKindFailed:
-		var v SearchSessionRefreshFailed
-		if err := json.Unmarshal(data, &v); err != nil {
-			return err
+		r.Failed = &SearchSessionRefreshFailed{
+			Kind:      w.Kind,
+			SearchID:  w.SearchID,
+			SessionID: w.SessionID,
+			Error:     w.Error,
 		}
-		v.Kind = probe.Kind
-		r.Failed = &v
 	default:
-		return fmt.Errorf("unknown SearchSessionRefreshResult Kind %q", probe.Kind)
+		return fmt.Errorf("unknown SearchSessionRefreshResult Kind %q", w.Kind)
 	}
 	return nil
 }
