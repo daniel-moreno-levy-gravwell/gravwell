@@ -446,7 +446,7 @@ type SearchLaunchInfo struct {
 	// the GUI and/or clients on when the query was actually started.
 	Started time.Time
 
-	// Expires marks when the search should expire/be deleted. A search launched
+	// Expires marks when the search should expire be deleted. A search launched
 	// with no expiration gets a default from the server, unless a flow, a script,
 	// or a scheduled search launched it in the foreground: that search gets none.
 	// Null means the search has no expiration, and what happens then depends on
